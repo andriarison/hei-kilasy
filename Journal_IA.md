@@ -108,3 +108,44 @@ Live HTTP checks against the actual PostgreSQL database passed:
 - Earlier automated rerun: 20 tests passed with no failures/errors/skips.
 
 The previous live-test blocker is resolved. Kilasy, PostgreSQL on 5432 and Mailpit are left running. This verification changes no business code. The earlier C1 commit was successfully pushed using the student's `andriarison` account; this journal update records subsequent verification.
+
+## 2026-11-24 — C2: simulated SMS notification
+
+### Request and approach
+
+The student supplied the C2 assignment and requested updating the application. C1 was confirmed on the remote main branch before starting. C2 requires the existing email plus a simulated SMS to the profile phone, a published grade that survives SMS failure, and a replaceable SMS provider. Previous instructions still apply: English documentation, Git identity `andriarison <andriarison.max@gmail.com>`, commit subject only with no body/coauthor.
+
+The assistant proposed a small provider interface and a logging implementation, keeping the existing application and grading flow. The user has not separately reviewed these implementation details; they are recorded as assistant choices under the implementation request.
+
+### Files changed and reasons
+
+| File | Change and reason |
+| --- | --- |
+| `src/main/java/hei/school/SmsSender.java` | Add a provider-independent SMS boundary so a future provider can replace the simulator without modifying grading code. |
+| `src/main/java/hei/school/LoggingSmsSender.java` | Log simulated SMS messages and optionally throw an exception to test a provider outage. No external SMS is sent. |
+| `src/main/java/hei/school/SubmissionController.java` | After saving the grade and sending email, send the same final grade to the profile phone. Catch SMS runtime exceptions, warn and retain the successful response. Skip absent/blank phones. |
+| `src/main/resources/application.properties` | Default the development-only failure switch to false. Port 5432 is unchanged. |
+| `src/test/java/hei/school/GradeConsistencyTest.java` | Extend existing cross-output scenarios to verify the SMS recipient and final grade. |
+| `src/test/java/hei/school/SmsNotificationTest.java` | Test provider logs, forced exception with persisted-state simulation and email, missing phones and invalid grades. |
+| `README.md` | Explain normal SMS logs, the provider boundary and manual failure testing. |
+| `docs/adr/0003-simulated-sms-notification.md` | Record the interface decision, alternatives, error handling and limits. |
+| `docs/architecture.md` | Add the local SMS log output and explain the implementation boundary. |
+| `Journal_IA.md` | Record the request, actual changes and verification evidence. |
+
+No database migration, new HTTP route, real SMS credentials, queue or retry mechanism was introduced. Email failure behavior remains unchanged. C1's calculation is unchanged.
+
+### Automated verification
+
+`mvn -B test`: BUILD SUCCESS, 26 tests, zero failures/errors/skips. This includes all C1 regression checks, six cross-output SMS comparisons, logged message verification, a provider exception, three absent/blank-phone cases and rejection of an invalid grade. `git diff --check` passed.
+
+### Live verification with PostgreSQL and Mailpit
+
+Restarted Spring Boot with the C2 classes. The real database remained on host port 5432.
+
+1. Normal simulator: regraded submission 2 with its initial 16 raw points and existing feedback. HTTP 200; correction/detail/transcript/CSV/email all showed 14.4. The log contained `[SMS] +261 34 00 000 02 : Your grade for « Tri à bulles » is available: 14.4/20.` Mailpit received one new email.
+2. Restarted with `--kilasy.sms.simulate-failure=true` and changed the same submission to 15 raw points. The provider threw `IllegalStateException`. HTTP still returned 200; correction/detail/transcript/CSV/email all showed 13.5. Logs contained the failure warning, with no successful SMS log. A direct PostgreSQL query confirmed `raw_points = 15.00` and a non-null grading timestamp. Mailpit received one new email.
+3. Restarted with normal settings to restore the initial 16 points and existing feedback. Final restoration result is recorded below. The tests update the grading timestamp and create local emails; no real SMS is sent.
+
+The student's personal time has not been supplied and is not estimated. The C2 screenshot's lower form questions were not visible, so no additional question wording is assumed.
+
+Final restoration passed: 16 raw points, final grade 14.4 in correction/detail/transcript/CSV/email, normal SMS log verified. During restart, another local Node application occupied HTTP port 8080. The first restoration check therefore received HTML instead of JSON and was rejected by the test script. Kilasy was relaunched with the temporary command-line override `--server.port=8081`; the restoration and all consistency assertions passed there. The tracked default remains 8080, PostgreSQL remains on 5432, and the other application was left running. Kilasy is left running on 8081 with normal SMS simulation.

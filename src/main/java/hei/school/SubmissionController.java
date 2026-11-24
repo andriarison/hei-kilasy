@@ -8,6 +8,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -22,6 +24,11 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 public class SubmissionController {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(SubmissionController.class);
+
+    @Autowired
+    private SmsSender smsSender;
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
@@ -155,6 +162,15 @@ public class SubmissionController {
         message.setText(text);
         mailSender.send(message);
         System.out.println("Email de note envoyé à " + row.get("email"));
+
+        String phone = (String) row.get("phone");
+        if (phone != null && !phone.isBlank()) {
+            try {
+                smsSender.send(phone, "Your grade for « " + title + " » is available: " + grade + "/20.");
+            } catch (RuntimeException exception) {
+                LOGGER.warn("SMS notification failed for submission {}: {}", id, exception.getMessage());
+            }
+        }
 
         Map<String, Object> result = new HashMap<>();
         result.put("id", id);

@@ -39,6 +39,7 @@ class GradeConsistencyTest {
                 "submitted_at", Timestamp.valueOf(submittedAt),
                 "raw_points", new BigDecimal(raw).setScale(2, java.math.RoundingMode.HALF_UP), "max_points", new BigDecimal("20"),
                 "full_name", "Test Student", "email", "student@example.test"));
+        row.put("phone", "+261 34 00 000 02");
         row.put("reference", "STD2");
         row.put("cohort", "K1");
         row.put("late", late);
@@ -48,6 +49,8 @@ class GradeConsistencyTest {
         SubmissionController controller = new SubmissionController();
         ReflectionTestUtils.setField(controller, "jdbcTemplate", jdbc);
         ReflectionTestUtils.setField(controller, "mailSender", mail);
+        SmsSender sms = mock(SmsSender.class);
+        ReflectionTestUtils.setField(controller, "smsSender", sms);
         Map<?, ?> correction = (Map<?, ?>) controller.grade(2L,
                 Map.of("points", new BigDecimal(raw), "feedback", "Good")).getBody();
         assertEquals(new BigDecimal(expected), correction.get("grade"));
@@ -67,6 +70,7 @@ class GradeConsistencyTest {
         ArgumentCaptor<SimpleMailMessage> sent = ArgumentCaptor.forClass(SimpleMailMessage.class);
         verify(mail).send(sent.capture());
         assertTrue(sent.getValue().getText().contains(expected + "/20"));
+        verify(sms).send(eq("+261 34 00 000 02"), contains(expected + "/20"));
     }
 
     @Test

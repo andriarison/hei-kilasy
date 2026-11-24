@@ -109,3 +109,23 @@ Correction, submission details, notification emails, transcripts and CSV use one
 Run the automated checks with `mvn test`. Calculation tests cover deadline boundaries, the cap, zero, negative input protection, other scales and rounding. Output consistency tests invoke the existing correction, detail, report and CSV methods using mocked JDBC and email dependencies; they are not live HTTP/database tests.
 
 See the [architecture view](docs/architecture.md) and [calculation decision](docs/adr/0002-shared-late-penalty.md).
+
+## SMS notification (C2)
+
+Publishing a grade still sends the existing email and now also logs a simulated SMS to the phone number on the student's profile:
+
+```text
+[SMS] +261 34 00 000 02 : Your grade for « Tri à bulles » is available: 14.4/20.
+```
+
+No real SMS is sent. Missing or blank phone numbers skip SMS. An SMS failure is logged and does not cancel the saved grade or its successful HTTP response. Email behavior is unchanged.
+
+To simulate a provider outage locally, stop the running application and launch:
+
+```bash
+mvn spring-boot:run -Dspring-boot.run.arguments=--kilasy.sms.simulate-failure=true
+```
+
+Grade a submission using the existing PUT route, then check the response, the submission detail, transcript and CSV. The logs should contain `SMS notification failed` while the grade remains published and the email is visible in Mailpit. Restart with the usual `mvn spring-boot:run` to restore normal simulation.
+
+`SmsSender` is the provider boundary; replacing `LoggingSmsSender` with another Spring implementation does not require changing grading code. Run `mvn test` for C1 regression checks, normal SMS verification, missing-phone behavior and a simulated provider exception. See [ADR 0003](docs/adr/0003-simulated-sms-notification.md).
