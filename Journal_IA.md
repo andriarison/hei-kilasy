@@ -82,3 +82,29 @@ No schema migration, route change or port change was made for C1. Raw points rem
 ### Delivery
 
 Created a commit with subject `C1`, no body and no coauthor trailer. `git push origin main` failed with HTTP 403: GitHub denied write access to `teamhackify12-creator` on `andriarison/hei-kilasy`. The implementation is committed locally; pushing requires an account with write access to this fork. The failure is documented in this same C1 commit.
+
+## 2026-11-24 — Live application verification on port 5432
+
+The student stopped the host PostgreSQL service. `docker compose up -d` started the database, but its previously failed container had no active host port mapping. A restart alone did not restore it; `docker compose up -d --force-recreate postgres` restored `5432:5432`. Existing database data was preserved. No source configuration or port change was needed.
+
+`mvn spring-boot:run` then started successfully: Hikari connected and Tomcat listened on 8080. The initial failed attempt before recreating the container reported a refused database connection.
+
+Live HTTP checks against the actual PostgreSQL database passed:
+
+| Submission | Scenario | Correction | Detail | Transcript | CSV |
+| --- | --- | --- | --- | --- | --- |
+| 1 | On time | 16.0 | 16.0 | 16.0 | 16,0 |
+| 2 | Next day, 02:00 | 14.4 | 14.4 | 14.4 | 14,4 |
+| 3 | Three days late | 11.2 | 11.2 | 11.2 | 11,2 |
+| 4 | Eight days late | 8.0 | 8.0 | 8.0 | 8,0 |
+
+- `GET /exercises`: HTTP 200, five exercises.
+- Regraded submissions 1–4 through `PUT /submissions/{id}/grade`, preserving their current raw points and feedback. This updates their grading timestamps and creates four local Mailpit emails.
+- Compared each correction response with `GET /submissions/{id}`, the matching transcript line, and the matching CSV row; all matched the expected grade.
+- Verified transcript averages against the returned final grades.
+- Submitting negative points returned HTTP 400.
+- The first ungraded assertion used submission 5 and failed because it was already graded with 15 points in the existing database. No change was made to it. Verified instead that submissions 7 and 12 remain ungraded.
+- Mailpit API returned HTTP 200; the four newest captured emails contain 8.0/20, 11.2/20, 14.4/20 and 16.0/20 as expected.
+- Earlier automated rerun: 20 tests passed with no failures/errors/skips.
+
+The previous live-test blocker is resolved. Kilasy, PostgreSQL on 5432 and Mailpit are left running. This verification changes no business code. The earlier C1 commit was successfully pushed using the student's `andriarison` account; this journal update records subsequent verification.
