@@ -97,9 +97,9 @@ public class SubmissionController {
         result.put("late", submittedAt.toLocalDate().isAfter(deadline));
         if (row.get("raw_points") != null) {
             double raw = ((BigDecimal) row.get("raw_points")).doubleValue();
-            double max = ((BigDecimal) row.get("max_points")).doubleValue();
             result.put("rawPoints", raw);
-            result.put("grade", Math.round(raw / max * 20 * 10) / 10.0);
+            result.put("grade", GradeCalculator.calculate((BigDecimal) row.get("raw_points"),
+                    (BigDecimal) row.get("max_points"), deadline, submittedAt));
             result.put("feedback", row.get("feedback"));
         }
         return ResponseEntity.ok(result);
@@ -127,15 +127,16 @@ public class SubmissionController {
             return ResponseEntity.badRequest().body(Map.of("error", "Les points doivent être entre 0 et " + max));
         }
 
+        // Match the NUMERIC(5, 2) storage precision before calculating the returned grade.
+        BigDecimal awardedPoints = BigDecimal.valueOf(points).setScale(2, java.math.RoundingMode.HALF_UP);
         jdbcTemplate.update("UPDATE submission SET raw_points = ?, feedback = ?, graded_at = now() WHERE id = ?",
-                points, feedback, id);
-
-        // grade out of 20
-        double grade = Math.round(points / max * 20 * 10) / 10.0;
+                awardedPoints, feedback, id);
 
         LocalDate deadline = ((java.sql.Date) row.get("deadline")).toLocalDate();
         LocalDateTime submittedAt = ((Timestamp) row.get("submitted_at")).toLocalDateTime();
         boolean late = submittedAt.toLocalDate().isAfter(deadline);
+        BigDecimal grade = GradeCalculator.calculate(awardedPoints,
+                (BigDecimal) row.get("max_points"), deadline, submittedAt);
 
         // notify the student by email
         String fullName = (String) row.get("full_name");
@@ -157,7 +158,7 @@ public class SubmissionController {
 
         Map<String, Object> result = new HashMap<>();
         result.put("id", id);
-        result.put("rawPoints", points);
+        result.put("rawPoints", awardedPoints);
         result.put("maxPoints", max);
         result.put("grade", grade);
         result.put("late", late);
