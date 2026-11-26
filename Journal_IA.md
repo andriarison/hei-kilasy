@@ -66,10 +66,56 @@ Decision: kept.
 Why: it lets me reproduce an outage on the running application without changing code.
 Verification: with the switch on, `PUT /submissions/2/grade` returned 200, PostgreSQL held `raw_points = 15.00`, detail/transcript/CSV/email showed 13.5 and the log showed `SMS notification failed`. I then restored 16 points (14.4) with the switch off. Port 8080 was taken by another local application at that moment, so this last check ran on 8081 with a command-line override; the project default stays 8080.
 
+## Change: C3 — timed exercises
+
+### Exchange 9 — 2026-11-26
+Request: « Should the requested features be separated with branches? »
+Proposal: one short-lived branch per client request (`c3-timed-exercises`), merged into `main` as a single commit `C3`; do not rewrite C1/C2, which are already pushed and checked by the teacher.
+Decision: kept.
+Why: `main` stays in the "C2 pushed" state the assignment asks to verify, and the C3 diff can be reviewed on its own before merging.
+Verification: the documentation update was committed on `main` first; C3 work is on the branch.
+
+### Exchange 10 — 2026-11-26
+Request: the C3 assignment (screenshot), « do these changes ».
+Proposal: the screenshot ends after the second acceptance criterion and the LMS refused a second session, so the assistant implemented the visible criteria and recorded every assumption in ADR 0004.
+Decision: kept, to be checked against the full assignment.
+Why: the visible criteria define the core (duration, `/start`, 422 after the end); the rest is documented rather than guessed silently.
+Verification: see exchange 14.
+
+### Exchange 11 — 2026-11-26
+Request: where to store the start of the countdown?
+Proposal: a new table `exercise_start` (primary key exercise + student) rather than a column on `submission`.
+Decision: kept (assistant choice under the implementation request, not reviewed separately).
+Why: the countdown starts before any submission exists; a "draft" submission row would change the meaning of the existing one-submission rule.
+Verification: live check that two `/start` calls leave one row.
+
+### Exchange 12 — 2026-11-26
+Request: what happens on a second `/start`, or a submission without `/start`?
+Proposal: a second start returns 200 with the first `startedAt` (`ON CONFLICT DO NOTHING`); a timed submission without a start is refused with 422.
+Decision: kept (assistant choice, to be confirmed by the full assignment).
+Why: resetting the countdown or accepting submissions without a start would both bypass the time limit.
+Verification: unit tests and live HTTP checks (201 then 200 with the same time; 422 without start).
+
+### Exchange 13 — 2026-11-26
+Request: none; raised while editing `ExerciseController`.
+Proposal: the row-to-`Exercise` mapping was copied twice and both copies needed the new nullable deadline and duration, so it was extracted into one private method `mapExercise`.
+Decision: kept, kept small on purpose.
+Why: the module forbids rewriting the code, but editing two identical copies would recreate the risk C1 showed (one copy forgotten). No other refactoring was done.
+Verification: existing routes `GET /exercises` and `GET /exercises/{id}` return the same five exercises live.
+
+### Exchange 14 — 2026-11-26
+Request: test the application before describing the changes.
+Proposal: the host PostgreSQL was running again on 5432 and another application used 8080, so the live test used a temporary `postgres:17` container on host port 55432 and Kilasy on 8081 through command-line overrides, without changing project files. Expiry was tested by moving one `started_at` two minutes back in the database instead of waiting.
+Decision: kept.
+Why: it tests the real SQL scripts and HTTP routes without stopping my host database or changing the shared 5432 configuration (ADR 0001).
+Verification: all checks passed: creation with duration only, with both, and invalid durations (400); submission without start (422); start on untimed (422), unknown exercise or student (404), after submission (409); first and second start (201/200, same time); submission in time (201, not late); after the end (422 with `endsAt`, nothing saved); grading 16 points gives 16.0 in correction, detail, transcript, CSV (empty deadline column), email and SMS log; an untimed exercise still accepts submissions. The temporary container was removed afterwards. `mvn test`: 45 tests, no failure.
+
 ## Summary
 
-- Files changed: `GradeCalculator`, `SmsSender`, `LoggingSmsSender` (new); `SubmissionController`, `GradeReport`, `CsvExport`, `application.properties`, `pom.xml` (test starter); three test classes; README, `docs/architecture.md`, ADRs 0001–0003.
-- Not changed: no database migration, no new route for C1/C2, French business messages and demo data unchanged.
+- Files changed for C1/C2: `GradeCalculator`, `SmsSender`, `LoggingSmsSender` (new); `SubmissionController`, `GradeReport`, `CsvExport`, `application.properties`, `pom.xml` (test starter); three test classes; README, `docs/architecture.md`, ADRs 0001–0003.
+- Files changed for C3: `ExerciseTimer`, `ExerciseTimerTest`, `TimedExerciseTest` (new); `schema.sql`, `Exercise`, `ExerciseController`, `SubmissionController`, `GradeReport`, `CsvExport`, `GradeCalculator`; README, `docs/architecture.md`, ADR 0004.
+- Not changed: no new route for C1/C2 (C3 adds `POST /exercises/{id}/start`), French business messages and demo data unchanged.
 - Known limits (recorded for the code review): the SMS text is in English while the email is in French; the simulated SMS writes the phone number and grade to the logs; if the email fails the API returns 500 after saving the grade and the SMS is not attempted; grading twice sends the email and SMS again.
-- Automated tests: 26 passing after C2 (`mvn test`).
+- Automated tests: 26 passing after C2, 45 after C3 (`mvn test`).
+- To check against the full C3 assignment: the screenshot was cut after the second acceptance criterion.
 - Personal working time: _to be completed by me_.

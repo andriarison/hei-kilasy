@@ -32,7 +32,7 @@ public class GradeReport {
         Map<String, Object> student = students.get(0);
 
         List<Map<String, Object>> rows = jdbcTemplate.queryForList(
-                "SELECT e.title, e.deadline, e.max_points, s.id AS submission_id, s.submitted_at, s.raw_points, s.feedback "
+                "SELECT e.title, e.deadline, e.duration_minutes, e.max_points, s.id AS submission_id, s.submitted_at, s.raw_points, s.feedback "
                         + "FROM exercise e LEFT JOIN submission s ON s.exercise_id = e.id AND s.student_id = ? "
                         + "ORDER BY e.deadline",
                 studentId);
@@ -42,12 +42,14 @@ public class GradeReport {
         int graded = 0;
         for (Map<String, Object> row : rows) {
             Map<String, Object> line = new LinkedHashMap<>();
-            LocalDate deadline = ((Date) row.get("deadline")).toLocalDate();
+            LocalDate deadline = row.get("deadline") == null ? null : ((Date) row.get("deadline")).toLocalDate();
             line.put("exercise", row.get("title"));
             line.put("deadline", deadline);
+            line.put("durationMinutes", row.get("duration_minutes"));
 
             if (row.get("submission_id") == null) {
-                if (deadline.isBefore(LocalDate.now())) {
+                // Timed-only exercises (C3) have no deadline and stay open.
+                if (deadline != null && deadline.isBefore(LocalDate.now())) {
                     line.put("status", "NON RENDU");
                 } else {
                     line.put("status", "À RENDRE");
@@ -56,7 +58,7 @@ public class GradeReport {
             } else {
                 LocalDateTime submittedAt = ((Timestamp) row.get("submitted_at")).toLocalDateTime();
                 line.put("submittedAt", submittedAt);
-                line.put("late", submittedAt.toLocalDate().isAfter(deadline));
+                line.put("late", deadline != null && submittedAt.toLocalDate().isAfter(deadline));
                 if (row.get("raw_points") == null) {
                     line.put("status", "EN ATTENTE DE CORRECTION");
                     line.put("grade", null);

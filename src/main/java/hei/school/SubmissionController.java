@@ -2,6 +2,7 @@ package hei.school;
 
 import java.math.BigDecimal;
 import java.sql.Timestamp;
+import java.time.Clock;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.HashMap;
@@ -36,6 +37,9 @@ public class SubmissionController {
     @Autowired
     private JavaMailSender mailSender;
 
+    /** Replaced in tests to control the current time. */
+    private Clock clock = Clock.systemDefaultZone();
+
     @PostMapping("/exercises/{id}/submissions")
     public ResponseEntity<?> submit(@PathVariable long id, @RequestBody Map<String, Object> body) {
         if (body.get("studentId") == null) {
@@ -65,9 +69,27 @@ public class SubmissionController {
             return ResponseEntity.status(409).body(Map.of("error", "Cet étudiant a déjà soumis cet exercice"));
         }
 
-        LocalDate deadline = ((java.sql.Date) exercises.get(0).get("deadline")).toLocalDate();
-        LocalDateTime now = LocalDateTime.now();
-        boolean late = now.toLocalDate().isAfter(deadline);
+        LocalDate deadline = toLocalDate(exercises.get(0).get("deadline"));
+        LocalDateTime now = LocalDateTime.now(clock);
+        boolean late = isLate(deadline, now);
+
+        // C3: a timed exercise must be started, and submitted before its duration ends.
+        Integer durationMinutes = (Integer) exercises.get(0).get("duration_minutes");
+        if (durationMinutes != null) {
+            List<Timestamp> starts = jdbcTemplate.queryForList(
+                    "SELECT started_at FROM exercise_start WHERE exercise_id = ? AND student_id = ?",
+                    Timestamp.class, id, studentId);
+            if (starts.isEmpty()) {
+                return ResponseEntity.status(422).body(Map.of("error",
+                        "Exercice minuté : démarrez-le avec POST /exercises/" + id + "/start avant de soumettre"));
+            }
+            LocalDateTime endsAt = ExerciseTimer.endsAt(starts.get(0).toLocalDateTime(), durationMinutes);
+            if (ExerciseTimer.isExpired(starts.get(0).toLocalDateTime(), durationMinutes, now)) {
+                return ResponseEntity.status(422).body(Map.of("error",
+                        "Temps écoulé : la durée de " + durationMinutes + " minutes s'est terminée à " + endsAt
+                                + ", la soumission est refusée", "endsAt", endsAt));
+            }
+        }
 
         jdbcTemplate.update(
                 "INSERT INTO submission (exercise_id, student_id, content, repo_url, submitted_at) VALUES (?, ?, ?, ?, ?)",
@@ -91,7 +113,7 @@ public class SubmissionController {
             return ResponseEntity.status(404).body(Map.of("error", "Soumission introuvable"));
         }
         Map<String, Object> row = rows.get(0);
-        LocalDate deadline = ((java.sql.Date) row.get("deadline")).toLocalDate();
+        LocalDate deadline = toLocalDate(row.get("deadline"));
         LocalDateTime submittedAt = ((Timestamp) row.get("submitted_at")).toLocalDateTime();
 
         Map<String, Object> result = new HashMap<>();
@@ -101,7 +123,7 @@ public class SubmissionController {
         result.put("content", row.get("content"));
         result.put("repoUrl", row.get("repo_url"));
         result.put("submittedAt", submittedAt);
-        result.put("late", submittedAt.toLocalDate().isAfter(deadline));
+        result.put("late", isLate(deadline, submittedAt));
         if (row.get("raw_points") != null) {
             double raw = ((BigDecimal) row.get("raw_points")).doubleValue();
             result.put("rawPoints", raw);
@@ -139,9 +161,9 @@ public class SubmissionController {
         jdbcTemplate.update("UPDATE submission SET raw_points = ?, feedback = ?, graded_at = now() WHERE id = ?",
                 awardedPoints, feedback, id);
 
-        LocalDate deadline = ((java.sql.Date) row.get("deadline")).toLocalDate();
+        LocalDate deadline = toLocalDate(row.get("deadline"));
         LocalDateTime submittedAt = ((Timestamp) row.get("submitted_at")).toLocalDateTime();
-        boolean late = submittedAt.toLocalDate().isAfter(deadline);
+        boolean late = isLate(deadline, submittedAt);
         BigDecimal grade = GradeCalculator.calculate(awardedPoints,
                 (BigDecimal) row.get("max_points"), deadline, submittedAt);
 
@@ -180,5 +202,14 @@ public class SubmissionController {
         result.put("late", late);
         result.put("feedback", feedback);
         return ResponseEntity.ok(result);
+    }
+
+    /** Timed-only exercises have no deadline, so they are never late. */
+    private static boolean isLate(LocalDate deadline, LocalDateTime submittedAt) {
+        return deadline != null && submittedAt.toLocalDate().isAfter(deadline);
+    }
+
+    private static LocalDate toLocalDate(Object sqlDate) {
+        return sqlDate == null ? null : ((java.sql.Date) sqlDate).toLocalDate();
     }
 }

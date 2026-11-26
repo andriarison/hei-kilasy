@@ -42,7 +42,7 @@ If Maven fails to connect to the database, check `docker compose ps -a` and `doc
 
 The local port decision is documented in [ADR 0001](docs/adr/0001-port-postgresql-local.md); changes and verification results are recorded in [Journal_IA.md](Journal_IA.md).
 
-**The SQL scripts are idempotent**: at every startup the schema and the demo data are created only if missing, and existing data is kept. To start from scratch, run `docker compose down` (PostgreSQL has no persistent volume, so removing the container wipes the data). The demo data is: 2 teachers, 6 students, 5 exercises and 12 submissions.
+**The SQL scripts are idempotent**: at every startup the schema and the demo data are created only if missing, and existing data is kept. To start from scratch, run `docker compose down` (PostgreSQL has no persistent volume, so removing the container wipes the data). The demo data is: 2 teachers, 6 students, 5 exercises and 12 submissions. After a change to `schema.sql` (for example C3), recreate the database with `docker compose down` then `docker compose up -d`: `CREATE TABLE IF NOT EXISTS` does not modify an existing table.
 
 ## API
 
@@ -57,6 +57,7 @@ The local port decision is documented in [ADR 0001](docs/adr/0001-port-postgresq
 | GET | `/students` | List students |
 | GET | `/students/{id}/transcript` | A student's grade transcript |
 | GET | `/exports/grades.csv` | Grades export for the registrar's office |
+| POST | `/exercises/{id}/start` | Start the student's countdown for a timed exercise (C3) |
 
 There is no authentication yet: the student or teacher identifier is passed in the request body.
 
@@ -129,3 +130,23 @@ mvn spring-boot:run -Dspring-boot.run.arguments=--kilasy.sms.simulate-failure=tr
 Grade a submission using the existing PUT route, then check the response, the submission detail, transcript and CSV. The logs should contain `SMS notification failed` while the grade remains published and the email is visible in Mailpit. Restart with the usual `mvn spring-boot:run` to restore normal simulation.
 
 `SmsSender` is the provider boundary; replacing `LoggingSmsSender` with another Spring implementation does not require changing grading code. Run `mvn test` for C1 regression checks, normal SMS verification, missing-phone behavior and a simulated provider exception. See [ADR 0003](docs/adr/0003-simulated-sms-notification.md).
+
+## Timed exercises (C3)
+
+An exercise can have a duration in minutes (`durationMinutes`), in addition to or instead of its deadline. The student starts the countdown, then must submit before it ends:
+
+```bash
+curl -X POST http://localhost:8080/exercises \
+  -H "Content-Type: application/json" \
+  -d '{"title": "Palindrome", "maxPoints": 20, "durationMinutes": 30, "teacherId": 1}'
+curl -X POST http://localhost:8080/exercises/6/start \
+  -H "Content-Type: application/json" -d '{"studentId": 2}'
+curl -X POST http://localhost:8080/exercises/6/submissions \
+  -H "Content-Type: application/json" -d '{"studentId": 2, "content": "class Palindrome {}"}'
+```
+
+- `/start` returns 201 with `startedAt` and `endsAt`; calling it again returns 200 with the same times (the countdown is never reset). It returns 422 for an untimed exercise and 409 if the student already submitted.
+- A timed submission is refused with HTTP 422 if the exercise was not started, or after `endsAt` (a submission at exactly `endsAt` is accepted).
+- Exercises without a duration behave as before. The late penalty still depends only on the deadline, so a timed-only exercise is never late.
+
+See [ADR 0004](docs/adr/0004-timed-exercises.md).

@@ -23,8 +23,11 @@ CREATE TABLE IF NOT EXISTS exercise
     title       VARCHAR(200) NOT NULL,
     description TEXT,
     max_points  NUMERIC(5, 2) NOT NULL DEFAULT 20,
-    deadline    DATE         NOT NULL,
-    created_at  TIMESTAMP    NOT NULL DEFAULT now()
+    -- An exercise has a deadline, a duration in minutes, or both (C3).
+    deadline    DATE,
+    duration_minutes INTEGER CHECK (duration_minutes > 0),
+    created_at  TIMESTAMP    NOT NULL DEFAULT now(),
+    CHECK (deadline IS NOT NULL OR duration_minutes IS NOT NULL)
 );
 
 CREATE TABLE IF NOT EXISTS submission
@@ -39,4 +42,13 @@ CREATE TABLE IF NOT EXISTS submission
     feedback     TEXT,
     graded_at    TIMESTAMP,
     UNIQUE (exercise_id, student_id)
+);
+
+-- When a student opened a timed exercise; one countdown per student and exercise (C3).
+CREATE TABLE IF NOT EXISTS exercise_start
+(
+    exercise_id BIGINT    NOT NULL REFERENCES exercise (id),
+    student_id  BIGINT    NOT NULL REFERENCES student (id),
+    started_at  TIMESTAMP NOT NULL,
+    PRIMARY KEY (exercise_id, student_id)
 );

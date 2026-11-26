@@ -34,7 +34,7 @@ public class CsvExport {
             if (row.get("raw_points") != null) {
                 BigDecimal grade = GradeCalculator.calculate((BigDecimal) row.get("raw_points"),
                         (BigDecimal) row.get("max_points"),
-                        ((java.sql.Date) row.get("deadline")).toLocalDate(),
+                        row.get("deadline") == null ? null : ((java.sql.Date) row.get("deadline")).toLocalDate(),
                         ((java.sql.Timestamp) row.get("submitted_at")).toLocalDateTime());
                 note = grade.toPlainString().replace('.', ',');
             }
@@ -43,7 +43,7 @@ public class CsvExport {
                     .append(row.get("email")).append(';')
                     .append(row.get("cohort")).append(';')
                     .append(row.get("title")).append(';')
-                    .append(row.get("deadline")).append(';')
+                    .append(row.get("deadline") == null ? "" : row.get("deadline")).append(';')
                     .append(row.get("submitted_at")).append(';')
                     .append(Boolean.TRUE.equals(row.get("late")) ? "oui" : "non").append(';')
                     .append(note).append('\n');
