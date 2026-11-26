@@ -124,4 +124,4 @@ Verification: `ExerciseTimer.timeUsed` tests (submitted, running, capped at the 
 - Not changed: no new route for C1/C2 (C3 adds `POST /exercises/{id}/start`), French business messages and demo data unchanged.
 - Known limits (recorded for the code review): the SMS text is in English while the email is in French; the simulated SMS writes the phone number and grade to the logs; if the email fails the API returns 500 after saving the grade and the SMS is not attempted; grading twice sends the email and SMS again.
 - Automated tests: 26 passing after C2, 51 after C3 and the time-used fix (`mvn test`).
-- Personal working time: _to be completed by me_.
+- Personal working time on C3: 42 min.
