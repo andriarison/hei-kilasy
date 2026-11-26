@@ -1,20 +1,22 @@
 # ADR 0001 — Keep PostgreSQL on port 5432
 
 - Date: 2026-11-24
-- Status: accepted by explicit user instruction; host service stop pending
+- Status: accepted
 
 ## Context
 
-The host PostgreSQL service occupies port 5432 and prevents the Kilasy container from starting. An initial workaround exposed the container on 5433 and successfully started Kilasy.
+Kilasy's Compose file publishes PostgreSQL on host port 5432 and the application connects to `jdbc:postgresql://localhost:5432/kilasy`. On my development machine a host PostgreSQL service already listens on 5432, so the Kilasy container could not start.
 
 ## Decision
 
-The user explicitly requested keeping port 5432 and stopping the existing host PostgreSQL instance. Restore the original Compose mapping `5432:5432` and JDBC URL `jdbc:postgresql://localhost:5432/kilasy`. Stop the host service gracefully using `sudo systemctl stop postgresql`.
+Keep the repository's original port 5432 in `compose.yaml` and `application.properties`. Resolve the conflict on the workstation instead: stop the host service (`sudo systemctl stop postgresql`) before `docker compose up -d`.
 
 ## Alternative considered
 
-Using port 5433 allowed both databases to run simultaneously. This workaround was implemented and verified, then superseded by the user's instruction.
+Publish the container on 5433 and change the JDBC URL. This was implemented and worked, and it lets both databases run at the same time. I reverted it because it changes shared project configuration to fix a problem specific to one machine: every other student, the teacher's instructions and the README assume 5432.
 
 ## Consequences
 
-The host PostgreSQL service must be stopped before the Kilasy container starts. Its data is preserved. The service remains enabled, so it may start again after a reboot. No persistent system service configuration is changed. Administrative authentication is required to stop the host service on this machine.
+- The repository stays identical to the reference configuration; no project file depends on my machine.
+- The host PostgreSQL must be stopped before working on Kilasy. Its data is kept. The service is still enabled, so it restarts after a reboot and must be stopped again.
+- If the conflict becomes frequent, a non-committed override (for example a local `compose.override.yaml` plus `SPRING_DATASOURCE_URL`) would be preferable to changing the shared defaults.
