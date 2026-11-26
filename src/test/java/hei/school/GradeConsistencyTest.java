@@ -44,6 +44,7 @@ class GradeConsistencyTest {
         row.put("cohort", "K1");
         row.put("late", late);
         when(jdbc.queryForList(anyString(), anyLong())).thenReturn(List.of(row));
+        when(jdbc.queryForList(anyString(), anyLong(), anyLong())).thenReturn(List.of(row));
         when(jdbc.queryForList(anyString())).thenReturn(List.of(row));
 
         SubmissionController controller = new SubmissionController();
@@ -80,6 +81,7 @@ class GradeConsistencyTest {
                 "submission_id", 2L, "deadline", Date.valueOf("2026-11-10"),
                 "submitted_at", Timestamp.valueOf("2026-11-11 02:00:00")));
         when(jdbc.queryForList(anyString(), anyLong())).thenReturn(List.of(row));
+        when(jdbc.queryForList(anyString(), anyLong(), anyLong())).thenReturn(List.of(row));
         when(jdbc.queryForList(anyString())).thenReturn(List.of(row));
         GradeReport report = new GradeReport();
         ReflectionTestUtils.setField(report, "jdbcTemplate", jdbc);

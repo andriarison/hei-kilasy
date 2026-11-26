@@ -4,6 +4,8 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.sql.Date;
 import java.sql.Timestamp;
+import java.time.Clock;
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -24,6 +26,9 @@ public class GradeReport {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
+    /** Replaced in tests to control the current time. */
+    private Clock clock = Clock.systemDefaultZone();
+
     public Map<String, Object> build(long studentId) {
         List<Map<String, Object>> students = jdbcTemplate.queryForList("SELECT * FROM student WHERE id = ?", studentId);
         if (students.isEmpty()) {
@@ -32,10 +37,11 @@ public class GradeReport {
         Map<String, Object> student = students.get(0);
 
         List<Map<String, Object>> rows = jdbcTemplate.queryForList(
-                "SELECT e.title, e.deadline, e.duration_minutes, e.max_points, s.id AS submission_id, s.submitted_at, s.raw_points, s.feedback "
+                "SELECT e.title, e.deadline, e.duration_minutes, e.max_points, s.id AS submission_id, s.submitted_at, s.raw_points, s.feedback, es.started_at "
                         + "FROM exercise e LEFT JOIN submission s ON s.exercise_id = e.id AND s.student_id = ? "
+                        + "LEFT JOIN exercise_start es ON es.exercise_id = e.id AND es.student_id = ? "
                         + "ORDER BY e.deadline",
-                studentId);
+                studentId, studentId);
 
         List<Map<String, Object>> lines = new ArrayList<>();
         BigDecimal total = BigDecimal.ZERO;
@@ -47,9 +53,28 @@ public class GradeReport {
             line.put("deadline", deadline);
             line.put("durationMinutes", row.get("duration_minutes"));
 
+            // C3: time used on a timed exercise, from the start to the submission (or now, capped).
+            Integer durationMinutes = (Integer) row.get("duration_minutes");
+            LocalDateTime startedAt = row.get("started_at") == null ? null : ((Timestamp) row.get("started_at")).toLocalDateTime();
+            boolean timeIsUp = false;
+            if (durationMinutes != null) {
+                line.put("startedAt", startedAt);
+                if (startedAt == null) {
+                    line.put("timeUsed", null);
+                } else {
+                    LocalDateTime now = LocalDateTime.now(clock);
+                    LocalDateTime submittedAt = row.get("submitted_at") == null ? null
+                            : ((Timestamp) row.get("submitted_at")).toLocalDateTime();
+                    Duration used = ExerciseTimer.timeUsed(startedAt, durationMinutes, submittedAt, now);
+                    line.put("timeUsed", ExerciseTimer.format(used));
+                    line.put("timeUsedSeconds", used.toSeconds());
+                    timeIsUp = ExerciseTimer.isExpired(startedAt, durationMinutes, now);
+                }
+            }
+
             if (row.get("submission_id") == null) {
-                // Timed-only exercises (C3) have no deadline and stay open.
-                if (deadline != null && deadline.isBefore(LocalDate.now())) {
+                // A timed exercise is missed once its countdown has ended.
+                if (timeIsUp || (deadline != null && deadline.isBefore(LocalDate.now(clock)))) {
                     line.put("status", "NON RENDU");
                 } else {
                     line.put("status", "À RENDRE");

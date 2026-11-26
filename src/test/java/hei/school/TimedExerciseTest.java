@@ -178,6 +178,7 @@ class TimedExerciseTest {
         Map<String, Object> notSubmitted = new HashMap<>(Map.of("title", "Timed, not submitted"));
         notSubmitted.put("deadline", null);
         when(jdbc.queryForList(anyString(), anyLong())).thenReturn(List.of(graded, notSubmitted));
+        when(jdbc.queryForList(anyString(), anyLong(), anyLong())).thenReturn(List.of(graded, notSubmitted));
         when(jdbc.queryForList(anyString())).thenReturn(List.of(graded));
 
         GradeReport report = new GradeReport();
@@ -192,6 +193,43 @@ class TimedExerciseTest {
         String csv = export.export().getBody();
         assertTrue(csv.contains(";Timed;;"), csv);
         assertTrue(csv.endsWith(";non;16,0\n"), csv);
+    }
+
+    @Test
+    void transcriptShowsTimeUsedForEachTimedExercise() {
+        Map<String, Object> submitted = new HashMap<>(Map.of(
+                "title", "Submitted", "submission_id", 13L, "duration_minutes", 30,
+                "started_at", Timestamp.valueOf(STARTED),
+                "submitted_at", Timestamp.valueOf(STARTED.plusMinutes(12).plusSeconds(5))));
+        Map<String, Object> expired = new HashMap<>(Map.of(
+                "title", "Expired", "duration_minutes", 30, "started_at", Timestamp.valueOf(STARTED)));
+        Map<String, Object> notStarted = new HashMap<>(Map.of("title", "Not started", "duration_minutes", 30));
+        Map<String, Object> untimed = new HashMap<>(Map.of("title", "Untimed", "deadline", Date.valueOf("2027-01-15")));
+        for (Map<String, Object> row : List.of(submitted, expired, notStarted)) {
+            row.putIfAbsent("deadline", null);
+        }
+        when(jdbc.queryForList(contains("FROM student"), anyLong())).thenReturn(List.of(Map.of("full_name", "Bob")));
+        when(jdbc.queryForList(contains("exercise_start"), anyLong(), anyLong()))
+                .thenReturn(List.of(submitted, expired, notStarted, untimed));
+
+        GradeReport report = new GradeReport();
+        ReflectionTestUtils.setField(report, "jdbcTemplate", jdbc);
+        ReflectionTestUtils.setField(report, "clock", at(STARTED.plusHours(2)));
+        List<?> lines = (List<?>) report.build(2L).get("exercises");
+        Map<?, ?> first = (Map<?, ?>) lines.get(0);
+        Map<?, ?> second = (Map<?, ?>) lines.get(1);
+        Map<?, ?> third = (Map<?, ?>) lines.get(2);
+        Map<?, ?> fourth = (Map<?, ?>) lines.get(3);
+
+        assertEquals("12 min 05 s", first.get("timeUsed"));
+        assertEquals(725L, first.get("timeUsedSeconds"));
+        assertEquals("EN ATTENTE DE CORRECTION", first.get("status"));
+        assertEquals("30 min 00 s", second.get("timeUsed"));
+        assertEquals("NON RENDU", second.get("status"), "the countdown is over without a submission");
+        assertNull(third.get("timeUsed"));
+        assertEquals("À RENDRE", third.get("status"));
+        assertFalse(fourth.containsKey("timeUsed"), "untimed exercises are unchanged");
+        assertEquals("À RENDRE", fourth.get("status"));
     }
 
     @Test

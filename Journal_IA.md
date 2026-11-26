@@ -110,12 +110,18 @@ Decision: kept.
 Why: it tests the real SQL scripts and HTTP routes without stopping my host database or changing the shared 5432 configuration (ADR 0001).
 Verification: all checks passed: creation with duration only, with both, and invalid durations (400); submission without start (422); start on untimed (422), unknown exercise or student (404), after submission (409); first and second start (201/200, same time); submission in time (201, not late); after the end (422 with `endsAt`, nothing saved); grading 16 points gives 16.0 in correction, detail, transcript, CSV (empty deadline column), email and SMS log; an untimed exercise still accepts submissions. The temporary container was removed afterwards. `mvn test`: 45 tests, no failure.
 
+### Exchange 15 — 2026-11-26
+Request: « You can access the LMS now; read the assignment and answer the questions. »
+Proposal: the full assignment has a fifth criterion that the screenshot hid: the transcript must show the time used on each timed exercise. The assistant added it after C3 had been pushed.
+Decision: kept. The assistant misled me here: it reported C3 as done and pushed from a partial assignment.
+Why: the missing criterion was a real requirement; the earlier work was based on a cut screenshot, and I should have asked for the full text before committing.
+Verification: `ExerciseTimer.timeUsed` tests (submitted, running, capped at the duration) and a transcript test (submitted, expired, not started, untimed). Live: a submission 12 min 05 s after the start shows `12 min 05 s`; an expired start of 1 minute shows `1 min 00 s` and `NON RENDU`; not started shows `null`; submission 2 is still graded 14.4 (C1 penalty). `mvn test`: 51 tests, no failure.
+
 ## Summary
 
 - Files changed for C1/C2: `GradeCalculator`, `SmsSender`, `LoggingSmsSender` (new); `SubmissionController`, `GradeReport`, `CsvExport`, `application.properties`, `pom.xml` (test starter); three test classes; README, `docs/architecture.md`, ADRs 0001–0003.
 - Files changed for C3: `ExerciseTimer`, `ExerciseTimerTest`, `TimedExerciseTest` (new); `schema.sql`, `Exercise`, `ExerciseController`, `SubmissionController`, `GradeReport`, `CsvExport`, `GradeCalculator`; README, `docs/architecture.md`, ADR 0004.
 - Not changed: no new route for C1/C2 (C3 adds `POST /exercises/{id}/start`), French business messages and demo data unchanged.
 - Known limits (recorded for the code review): the SMS text is in English while the email is in French; the simulated SMS writes the phone number and grade to the logs; if the email fails the API returns 500 after saving the grade and the SMS is not attempted; grading twice sends the email and SMS again.
-- Automated tests: 26 passing after C2, 45 after C3 (`mvn test`).
-- To check against the full C3 assignment: the screenshot was cut after the second acceptance criterion.
+- Automated tests: 26 passing after C2, 51 after C3 and the time-used fix (`mvn test`).
 - Personal working time: _to be completed by me_.

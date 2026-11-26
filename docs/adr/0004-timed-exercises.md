@@ -15,7 +15,8 @@ C3: a teacher can give an exercise a duration in minutes, in addition to or inst
 - `ExerciseTimer` holds the rule: `endsAt = startedAt + duration`; a submission at exactly `endsAt` is accepted, one instant later is refused.
 - Submitting to a timed exercise without a start returns 422, because otherwise the time limit could be bypassed by never calling `/start`.
 - The late penalty (ADR 0002) still depends only on the deadline. A timed-only exercise has no deadline, so no penalty; with both, the duration controls acceptance and the deadline controls the penalty.
-- The current time comes from a `Clock` field in the two controllers, so tests use a fixed instant.
+- The transcript shows, for each timed exercise, `startedAt`, `timeUsed` (for example `12 min 05 s`) and `timeUsedSeconds`: from the start to the submission, or to now while the countdown runs, never more than the duration. Not started gives `timeUsed: null`. A started exercise whose countdown ended without a submission is `NON RENDU`.
+- The current time comes from a `Clock` field in the two controllers and in `GradeReport`, so tests use a fixed instant.
 
 ## Alternatives
 
@@ -27,5 +28,4 @@ C3: a teacher can give an exercise a duration in minutes, in addition to or inst
 
 - No authentication yet: `studentId` is in the body, as for submissions, so a student could start or submit on behalf of someone else.
 - Times are server local time (`TIMESTAMP` without time zone), like `submitted_at`.
-- A student who starts a timed-only exercise and lets the time run out keeps the status `À RENDRE` in the transcript, because that status is based on the deadline only.
 - Starting is allowed after the deadline of an exercise that has both; the late penalty then applies.

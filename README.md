@@ -147,6 +147,7 @@ curl -X POST http://localhost:8080/exercises/6/submissions \
 
 - `/start` returns 201 with `startedAt` and `endsAt`; calling it again returns 200 with the same times (the countdown is never reset). It returns 422 for an untimed exercise and 409 if the student already submitted.
 - A timed submission is refused with HTTP 422 if the exercise was not started, or after `endsAt` (a submission at exactly `endsAt` is accepted).
+- The transcript (`GET /students/{id}/transcript`) shows the time used on each timed exercise (`timeUsed`, for example `12 min 05 s`, and `timeUsedSeconds`). A started exercise whose time ran out without a submission is `NON RENDU`.
 - Exercises without a duration behave as before. The late penalty still depends only on the deadline, so a timed-only exercise is never late.
 
 See [ADR 0004](docs/adr/0004-timed-exercises.md).
